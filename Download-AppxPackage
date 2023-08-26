@@ -1,0 +1,48 @@
+#This Script will download the required packages to install the application from store
+
+
+$ApplicationName="Store application name"
+New-Item -Path C:\Temp -Name $applicationname -ItemType Directory -ErrorAction SilentlyContinue
+
+#$ApplicationMicrosoftstoreLink="https://apps.microsoft.com/store/detail/paint-3d/9NBLGGH5FV99"
+
+Function Download-AppxPackageFromStore {
+[CmdletBinding()]
+param (
+  [string]$Uri,
+  [string]$Path = "."
+)
+   
+  Process {
+    $Path = (Resolve-Path $Path).Path
+      $WebResponse = Invoke-WebRequest -UseBasicParsing -Method 'POST' -Uri 'https://store.rg-adguard.net/api/GetFiles' -Body "type=url&url=$Uri&ring=Retail" -ContentType 'application/x-www-form-urlencoded'
+    $LinksMatch = $WebResponse.Links | where {$_ -like '*.appx*'} | where {$_ -like '*_neutral_*' -or $_ -like "*_"+$env:PROCESSOR_ARCHITECTURE.Replace("AMD","X").Replace("IA","X")+"_*"} | Select-String -Pattern '(?<=a href=").+(?=" r)'
+    $DownloadLinks = $LinksMatch.matches.value 
+
+    Function Resolve-NameConflict{
+      Param(
+    [string]$Path
+    )
+        $UpdatedPath = $Path
+        if(Test-Path $Path){
+            $i = 0;
+            $item = (Get-Item $Path)
+            while(Test-Path $UpdatedPath){
+                $i += 1;
+                $UpdatedPath = Join-Path $item.DirectoryName ($item.BaseName+"($i)"+$item.Extension)
+            }
+        }
+        Return $UpdatedPath
+    }
+
+    Foreach($DownloadLink in $DownloadLinks){
+        $FileRequest = IWR-Uri $DownloadLink -UseBasicParsing  
+        $FileName = ($FileRequest.Headers["Content-Disposition"] | Select-String -Pattern  '(?<=filename=).+').matches.value
+        $FilePath = Join-Path $Path $FileName; $FilePath = Resolve-NameConflict($FilePath)
+        [System.IO.File]::WriteAllBytes($FilePath, $FileRequest.content)
+        Echo $FilePath
+    }
+  }
+}
+
+Download-AppxPackageFromStore -Path C:\Temp\$applicationname -Uri $ApplicationMicrosoftstoreLink 
